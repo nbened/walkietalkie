@@ -1,0 +1,1384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Sessions — WalkieTalkie</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --ground: #f4f4f6;
+    --ink: #1c1c1e;
+    --muted: #8a8a8e;
+    --dim: #48484a;
+    --line: #ececef;
+    --line-strong: #dcdce0;
+    --sent: #0a7cff;
+    --received: #e9e9eb;
+    --live: #34c759;
+    --fail: #ff3b30;
+    --ok-bg: #e8f4e9;
+    --ok-ink: #1c7a32;
+    --fail-bg: #fdeceb;
+    --fail-ink: #b3261e;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.35;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    padding-top: env(safe-area-inset-top);
+  }
+  [hidden] { display: none !important; }
+
+  /* —— Sessions list —— */
+  #sessions {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #sessions-head {
+    flex: none;
+    padding: 10px 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  #sessions-head .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  #sessions-head h1 {
+    margin: 0;
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+  #sessions-meta {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  #sessions-meta.ok { color: var(--ok-ink); }
+  #sessions-meta.err { color: var(--fail-ink); }
+  #sess-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    border-top: 1px solid var(--line);
+  }
+  .sess-section-title {
+    margin: 0;
+    padding: 12px 16px;
+    background: var(--ground);
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .sess-row {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+  }
+  .sess-delete {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: 88px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--fail);
+    color: #fff;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    z-index: 0;
+  }
+  .sess-row .sess {
+    position: relative;
+    z-index: 1;
+    border-bottom: none;
+    transition: transform 180ms ease;
+    touch-action: pan-y;
+    will-change: transform;
+  }
+  .sess-row.open .sess { transform: translateX(-88px); }
+  .sess {
+    width: 100%;
+    display: flex;
+    gap: 12px;
+    padding: 12px 16px;
+    border: none;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  .sess.active { background: #f7fbff; }
+  .sess:active { background: var(--ground); }
+  .sess .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 5px;
+    margin-top: 8px;
+    flex: none;
+    background: transparent;
+  }
+  .sess.active .dot { background: var(--live); }
+  .sess.browser .dot { background: #94a3b8; }
+  .sess.browser.active .dot { background: var(--sent); }
+  .sess .kind {
+    flex: none;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 2px 6px;
+    align-self: flex-start;
+    margin-top: 2px;
+  }
+  .sess.browser .kind {
+    color: var(--sent);
+    border-color: color-mix(in srgb, var(--sent) 35%, var(--line));
+    background: color-mix(in srgb, var(--sent) 8%, transparent);
+  }
+  #browser {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: #0b0d10;
+  }
+  #browser[hidden] { display: none !important; }
+  #btop {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px 10px;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    background: rgba(12,14,18,.96);
+    color: #f4f4f5;
+  }
+  #bback {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: transparent;
+    color: #7dd3fc;
+    font-size: 28px;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+  }
+  #btitlewrap { flex: 1; min-width: 0; }
+  #btitle {
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #btitle .live {
+    width: 7px;
+    height: 7px;
+    border-radius: 4px;
+    background: var(--live);
+    flex: none;
+  }
+  #bstatus {
+    font-size: 12px;
+    color: #a1a1aa;
+    font-family: var(--mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #bstage {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0b0d10;
+    overflow: hidden;
+  }
+  #bframe {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+    background: #111;
+  }
+  #bframe[hidden] { display: none; }
+  #bempty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #a1a1aa;
+    font-size: 14px;
+    padding: 24px;
+    text-align: center;
+  }
+  #bempty[hidden] { display: none; }
+  #bempty.err { color: #fda4af; }
+  .sess .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .sess .top { display: flex; justify-content: space-between; gap: 8px; }
+  .sess .name {
+    font-size: 17px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sess .when { font-size: 13px; color: var(--muted); flex: none; }
+  .sess .snip {
+    font-size: 15px;
+    color: var(--dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sess .path {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #sessions-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+  }
+  #sessions-foot .hint { font-size: 12px; color: var(--muted); }
+  #sessions-foot .hint button {
+    border: none;
+    background: none;
+    padding: 0;
+    font: inherit;
+    color: var(--sent);
+    cursor: pointer;
+  }
+  #leave {
+    border: none;
+    background: var(--ground);
+    color: var(--dim);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+  }
+
+  /* —— Thread —— */
+  #thread {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #top {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px 10px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255,255,255,.94);
+  }
+  #back {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: transparent;
+    color: var(--sent);
+    font-size: 28px;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+  }
+  #titlewrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  #title {
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #title .live {
+    width: 7px;
+    height: 7px;
+    border-radius: 4px;
+    background: var(--live);
+    flex: none;
+  }
+  #status {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #status.ok { color: var(--muted); }
+  #status.err { color: var(--fail-ink); }
+  #ctog {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 18px;
+    background: var(--ground);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dim);
+    cursor: pointer;
+  }
+  #ctog.on { background: var(--sent); color: #fff; }
+
+  #log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .turn {
+    display: flex;
+    flex-direction: column;
+    max-width: 100%;
+  }
+  .turn + .turn.user { margin-top: 10px; }
+  .turn.user + .turn.assistant,
+  .turn.user + .turn.command,
+  .turn.assistant + .turn.user,
+  .turn.command + .turn.user { margin-top: 10px; }
+  .turn.system { align-items: center; margin: 8px 0; }
+  .turn.user { align-items: flex-end; }
+  .turn.assistant, .turn.command { align-items: flex-start; }
+
+  .bubble {
+    max-width: 76%;
+    font-size: 17px;
+    line-height: 1.3;
+    word-break: break-word;
+    padding: 9px 14px;
+  }
+  .turn.assistant .bubble {
+    background: var(--received);
+    color: var(--ink);
+    border-radius: 20px 20px 20px 6px;
+  }
+  .turn.user .bubble {
+    background: var(--sent);
+    color: #fff;
+    border-radius: 20px 20px 6px 20px;
+    white-space: pre-wrap;
+  }
+  .turn.system .bubble {
+    max-width: none;
+    padding: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+  }
+  .turn.command { width: 100%; }
+  .turn.command .bubble {
+    max-width: 100%;
+    padding: 0;
+    background: none;
+  }
+  body.hide-cmds .turn.command { display: none; }
+
+  .bubble .md > :first-child { margin-top: 0; }
+  .bubble .md > :last-child { margin-bottom: 0; }
+  .bubble .md p { margin: 0 0 0.55em; }
+  .bubble .md p:last-child { margin-bottom: 0; }
+  .bubble .md code {
+    font-family: var(--mono);
+    font-size: 15px;
+    background: rgba(0,0,0,.06);
+    border-radius: 4px;
+    padding: 0.05em 0.3em;
+  }
+  .turn.user .bubble .md code { background: rgba(255,255,255,.2); }
+  .bubble .md pre {
+    margin: 0.45em 0;
+    padding: 8px 10px;
+    background: rgba(0,0,0,.06);
+    border-radius: 10px;
+    overflow-x: auto;
+  }
+  .bubble .md pre code { background: none; padding: 0; font-size: 13px; }
+  .bubble .md a { color: inherit; text-decoration: underline; }
+  .bubble .md ul, .bubble .md ol { margin: 0.35em 0 0.55em; padding-left: 1.25em; }
+
+  .tool {
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--bg);
+  }
+  .tool > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    user-select: none;
+  }
+  .tool > summary::-webkit-details-marker { display: none; }
+  .tool .ico {
+    width: 26px;
+    height: 26px;
+    flex: none;
+    border-radius: 8px;
+    background: #eef4ff;
+    color: var(--sent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+  .tool .meta { flex: 1; min-width: 0; }
+  .tool .meta .lab { font-size: 13.5px; font-weight: 600; }
+  .tool .meta .cmd {
+    font-size: 12.5px;
+    font-family: var(--mono);
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tool .chev { color: #c7c7cc; font-size: 15px; flex: none; }
+  .tool[open] .chev { transform: rotate(90deg); }
+  .tool .tool-body {
+    background: #1c1c1e;
+    color: #e5e5ea;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.7;
+    padding: 10px 12px;
+    white-space: pre-wrap;
+    max-height: 240px;
+    overflow: auto;
+  }
+
+  #bar {
+    flex: none;
+    padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+  }
+  #composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background: var(--bg);
+    border: 1px solid #d1d1d6;
+    border-radius: 22px;
+    padding: 6px 6px 6px 14px;
+  }
+  #msg {
+    flex: 1;
+    min-width: 0;
+    resize: none;
+    outline: none;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 17px;
+    line-height: 1.3;
+    color: var(--ink);
+    padding: 9px 0;
+    max-height: 120px;
+    min-height: 22px;
+  }
+  #msg::placeholder { color: var(--muted); }
+  #send {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 18px;
+    background: var(--sent);
+    color: #fff;
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #send:disabled { opacity: 0.4; }
+  #send.stop {
+    background: var(--fail);
+    font-size: 13px;
+    letter-spacing: 0;
+  }
+</style>
+</head>
+<body>
+<div id="sessions">
+  <div id="sessions-head">
+    <div class="row">
+      <h1>Sessions</h1>
+      <div id="sessions-meta">connecting…</div>
+    </div>
+  </div>
+  <div id="sess-list"></div>
+  <div id="sessions-foot">
+    <span class="hint">Terminals chat · browsers live-stream · <button id="restore-sessions" type="button">Restore</button></span>
+    <button id="leave" type="button">Disconnect</button>
+  </div>
+</div>
+
+<div id="thread" hidden>
+  <div id="top">
+    <button id="back" type="button" aria-label="Back to sessions">‹</button>
+    <div id="titlewrap">
+      <div id="title"><span class="live" id="livedot" hidden></span><span id="titletext">cmux</span></div>
+      <div id="status">…</div>
+    </div>
+    <button id="ctog" type="button" title="Show tools" aria-pressed="true">C</button>
+  </div>
+  <div id="log"></div>
+  <div id="bar">
+    <div id="composer">
+      <textarea id="msg" rows="1" placeholder="Message the agent…" enterkeyhint="send"></textarea>
+      <button id="send" type="button" aria-label="Send">↑</button>
+    </div>
+  </div>
+</div>
+
+<div id="browser" hidden>
+  <div id="btop">
+    <button id="bback" type="button" aria-label="Back to sessions">‹</button>
+    <div id="btitlewrap">
+      <div id="btitle"><span class="live" id="blivedot" hidden></span><span id="btitletext">Browser</span></div>
+      <div id="bstatus">…</div>
+    </div>
+  </div>
+  <div id="bstage">
+    <img id="bframe" alt="Live browser view" hidden />
+    <div id="bempty">Starting live view…</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var TOKEN = __TOKEN_JSON__;
+  var LANDING = __LANDING_JSON__;
+  var API = __API_BASE_JSON__;
+  var sessionsView = document.getElementById("sessions");
+  var threadView = document.getElementById("thread");
+  var browserView = document.getElementById("browser");
+  var sessList = document.getElementById("sess-list");
+  var sessionsMeta = document.getElementById("sessions-meta");
+  var log = document.getElementById("log");
+  var msg = document.getElementById("msg");
+  var sendBtn = document.getElementById("send");
+  var statusEl = document.getElementById("status");
+  var titleText = document.getElementById("titletext");
+  var liveDot = document.getElementById("livedot");
+  var ctog = document.getElementById("ctog");
+  var backBtn = document.getElementById("back");
+  var leaveBtn = document.getElementById("leave");
+  var restoreBtn = document.getElementById("restore-sessions");
+  var bbackBtn = document.getElementById("bback");
+  var btitleText = document.getElementById("btitletext");
+  var bstatusEl = document.getElementById("bstatus");
+  var bliveDot = document.getElementById("blivedot");
+  var bframe = document.getElementById("bframe");
+  var bempty = document.getElementById("bempty");
+
+  var misses = 0;
+  var lastSig = "";
+  var sending = false;
+  var pendingUser = null;
+  var agentBusy = false;
+  var interrupting = false;
+  var holdStop = false;
+  var sawBusy = false;
+  var sendAt = 0;
+  var poller = null;
+  var leaving = false;
+  var showCmds = true;
+  var known = [];
+  var activeKey = null;
+  var inThread = false;
+  var lastSessions = [];
+  var hiddenSessions = loadHidden();
+  var openSwipeRow = null;
+  var activeType = "terminal";
+  var activeUrl = "";
+  var activeSurface = null;
+  var activeWorkspace = null;
+  var inBrowser = false;
+  var previewTimer = null;
+  var previewBusy = false;
+
+  function loadHidden() {
+    try {
+      var raw = localStorage.getItem("longleash.hiddenSessions");
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveHidden() {
+    try {
+      localStorage.setItem("longleash.hiddenSessions", JSON.stringify(hiddenSessions));
+    } catch (e) {}
+  }
+
+  function sessionKey(s) {
+    return String(s.surface || s.surface_id || s.title || "");
+  }
+
+  function normText(text) {
+    return String(text || "").replace(/\s+/g, " ").trim();
+  }
+
+  function pendingSeen(messages, text) {
+    var needle = normText(text);
+    if (!needle) return true;
+    return (messages || []).some(function(m) {
+      if (m.role !== "user") return false;
+      var got = normText(m.text);
+      return got === needle || got.indexOf(needle) !== -1 || needle.indexOf(got) !== -1;
+    });
+  }
+
+  function clearComposer() {
+    msg.value = "";
+    msg.style.height = "auto";
+    requestAnimationFrame(function() {
+      msg.value = "";
+      msg.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function(c) {
+      return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c];
+    });
+  }
+
+  function shortPath(p) {
+    if (!p) return "";
+    return String(p).replace(/^\/Users\/[^\/]+/, "~");
+  }
+
+  function shortUrl(u) {
+    if (!u) return "";
+    try {
+      var x = new URL(u);
+      var path = x.pathname === "/" ? "" : x.pathname;
+      return x.host + path + (x.search || "");
+    } catch (e) {
+      return String(u);
+    }
+  }
+
+  function stopBrowserStream() {
+    if (previewTimer) {
+      clearTimeout(previewTimer);
+      previewTimer = null;
+    }
+    previewBusy = false;
+    if (bframe) {
+      bframe.removeAttribute("src");
+      bframe.hidden = true;
+    }
+  }
+
+  function showSessions() {
+    inThread = false;
+    inBrowser = false;
+    stopBrowserStream();
+    sessionsView.hidden = false;
+    threadView.hidden = true;
+    if (browserView) browserView.hidden = true;
+  }
+
+  function showThread() {
+    inThread = true;
+    inBrowser = false;
+    stopBrowserStream();
+    sessionsView.hidden = true;
+    threadView.hidden = false;
+    if (browserView) browserView.hidden = true;
+  }
+
+  function showBrowserLive() {
+    inThread = false;
+    inBrowser = true;
+    sessionsView.hidden = true;
+    threadView.hidden = true;
+    if (browserView) browserView.hidden = false;
+    if (btitleText) btitleText.textContent = titleText.textContent || "Browser";
+    if (bstatusEl) bstatusEl.textContent = activeUrl ? shortUrl(activeUrl) : "live view";
+    if (bempty) {
+      bempty.hidden = false;
+      bempty.classList.remove("err");
+      bempty.textContent = "Starting live view…";
+    }
+    if (bliveDot) bliveDot.hidden = true;
+    stopBrowserStream();
+    pullBrowserFrame();
+  }
+
+  function pullBrowserFrame() {
+    if (!inBrowser || previewBusy) return;
+    previewBusy = true;
+    var url = API + "/preview?t=" + encodeURIComponent(TOKEN) + "&_=" + Date.now();
+    if (activeSurface) url += "&surface=" + encodeURIComponent(activeSurface);
+    if (activeWorkspace) url += "&workspace=" + encodeURIComponent(activeWorkspace);
+    var img = new Image();
+    img.onload = function() {
+      if (!inBrowser) { previewBusy = false; return; }
+      bframe.src = img.src;
+      bframe.hidden = false;
+      if (bempty) bempty.hidden = true;
+      if (bliveDot) bliveDot.hidden = false;
+      previewBusy = false;
+      previewTimer = setTimeout(pullBrowserFrame, 800);
+    };
+    img.onerror = function() {
+      previewBusy = false;
+      if (!inBrowser) return;
+      if (bframe.hidden && bempty) {
+        bempty.hidden = false;
+        bempty.classList.add("err");
+        bempty.textContent = "Can't stream this browser tab yet";
+      }
+      previewTimer = setTimeout(pullBrowserFrame, 1600);
+    };
+    img.src = url;
+  }
+
+  function inlineMd(s) {
+    s = esc(s);
+    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, "$1<em>$2</em>");
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return s;
+  }
+
+  function renderMd(src) {
+    var text = String(src || "").replace(/\r\n/g, "\n");
+    var lines = text.split("\n");
+    var html = [];
+    var i = 0;
+    function flushPara(buf) {
+      if (!buf.length) return;
+      html.push("<p>" + inlineMd(buf.join(" ")) + "</p>");
+      buf.length = 0;
+    }
+    while (i < lines.length) {
+      var line = lines[i];
+      var fence = line.match(/^```([\w-]*)\s*$/);
+      if (fence) {
+        flushPara([]);
+        var code = [];
+        i++;
+        while (i < lines.length && !/^```\s*$/.test(lines[i])) {
+          code.push(lines[i]); i++;
+        }
+        html.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>");
+        i++; continue;
+      }
+      if (!line.trim()) { flushPara([]); i++; continue; }
+      var para = [];
+      while (i < lines.length && lines[i].trim() && !/^```/.test(lines[i])) {
+        para.push(lines[i]); i++;
+      }
+      flushPara(para);
+    }
+    return '<div class="md">' + (html.join("") || ("<p>" + inlineMd(text) + "</p>")) + "</div>";
+  }
+
+  function expandMessages(messages) {
+    var out = [];
+    (messages || []).forEach(function(m) {
+      var kind = m.kind || "message";
+      var role = m.role === "user" ? "user" : (kind === "command" ? "command" : "assistant");
+      if (role === "assistant" && kind === "message") {
+        var chunks = String(m.text || "").split(/\n{2,}/).map(function(s) { return s.trim(); }).filter(Boolean);
+        if (chunks.length > 1) {
+          chunks.forEach(function(chunk) {
+            out.push({ role: "assistant", kind: "message", text: chunk });
+          });
+          return;
+        }
+      }
+      out.push({ role: role, kind: kind, text: m.text || "" });
+    });
+    return out;
+  }
+
+  function closeSwipeRow() {
+    if (openSwipeRow) {
+      openSwipeRow.classList.remove("open");
+      openSwipeRow = null;
+    }
+  }
+
+  function bindSwipeRows() {
+    sessList.querySelectorAll(".sess-row").forEach(function(row) {
+      var btn = row.querySelector(".sess");
+      var del = row.querySelector(".sess-delete");
+      var startX = 0;
+      var startY = 0;
+      var baseX = 0;
+      var dragging = false;
+
+      function setX(x) {
+        btn.style.transform = "translateX(" + Math.max(-88, Math.min(0, x)) + "px)";
+      }
+
+      btn.addEventListener("touchstart", function(e) {
+        if (e.touches.length !== 1) return;
+        closeSwipeRow();
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        baseX = row.classList.contains("open") ? -88 : 0;
+        dragging = true;
+      }, { passive: true });
+
+      btn.addEventListener("touchmove", function(e) {
+        if (!dragging || e.touches.length !== 1) return;
+        var dx = e.touches[0].clientX - startX;
+        var dy = e.touches[0].clientY - startY;
+        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dx) < 12) return;
+        if (Math.abs(dx) > 8) e.preventDefault();
+        setX(baseX + dx);
+      }, { passive: false });
+
+      btn.addEventListener("touchend", function(e) {
+        if (!dragging) return;
+        dragging = false;
+        btn.style.transform = "";
+        var endX = (e.changedTouches[0] || {}).clientX || startX;
+        var dx = endX - startX;
+        if (baseX === 0 && dx < -36) {
+          row.classList.add("open");
+          openSwipeRow = row;
+        } else if (baseX === -88 && dx > 24) {
+          row.classList.remove("open");
+          openSwipeRow = null;
+        } else if (baseX === 0) {
+          row.classList.remove("open");
+        } else {
+          row.classList.add("open");
+          openSwipeRow = row;
+        }
+      });
+
+      del.addEventListener("click", function(e) {
+        e.stopPropagation();
+        var key = row.getAttribute("data-key");
+        if (key && hiddenSessions.indexOf(key) === -1) hiddenSessions.push(key);
+        saveHidden();
+        closeSwipeRow();
+        renderPicker(lastSessions, activeKey);
+      });
+    });
+  }
+
+  function toolLabel(firstLine) {
+    var s = String(firstLine || "").replace(/^\$\s*/, "").trim();
+    if (/^Read,?\b/i.test(s)) return "Read files";
+    if (/^Read\b/i.test(s)) return "Read file";
+    if (/^Grepped\b/i.test(s)) return "Searched";
+    if (/^Edited\b/i.test(s)) return "Edited file";
+    if (/^Monitored\b/i.test(s)) return "Monitored task";
+    if (/^Waited\b/i.test(s)) return "Waited";
+    if (/^Finished\b/i.test(s)) return "Finished";
+    if (/^Ran\b/i.test(s)) return "Ran";
+    return "Ran command";
+  }
+
+  function splitTool(text) {
+    var raw = String(text || "").replace(/\r\n/g, "\n").trim();
+    var lines = raw.split("\n");
+    var first = (lines[0] || "").replace(/^\$\s*/, "").trim();
+    var rest = lines.slice(1).join("\n").replace(/^\n+/, "");
+    var dur = "";
+    var dm = first.match(/\s+(\d+(?:\.\d+)?m?s)\s*$/);
+    if (dm) {
+      dur = dm[1];
+      first = first.slice(0, -dm[0].length).trim();
+    }
+    return { cmd: first || "command", out: rest, dur: dur };
+  }
+
+  function renderTool(text) {
+    var t = splitTool(text);
+    var lab = toolLabel(t.cmd);
+    return '<details class="tool">' +
+      "<summary>" +
+        '<span class="ico">›_</span>' +
+        '<span class="meta"><div class="lab">' + esc(lab) + '</div><div class="cmd">' + esc(t.cmd) + "</div></span>" +
+        '<span class="chev">›</span>' +
+      "</summary>" +
+      (t.out ? '<div class="tool-body">' + esc(t.out) + "</div>" : '<div class="tool-body">' + esc(t.cmd) + "</div>") +
+    "</details>";
+  }
+
+  function setCmds(on) {
+    showCmds = !!on;
+    document.body.classList.toggle("hide-cmds", !showCmds);
+    ctog.classList.toggle("on", showCmds);
+    ctog.setAttribute("aria-pressed", showCmds ? "true" : "false");
+  }
+
+  function render(messages) {
+    known = messages || known;
+    var html = "";
+    var expanded = expandMessages(known);
+    if (!expanded.length && !pendingUser) {
+      html = '<div class="turn system"><div class="bubble">Say something to the agent.</div></div>';
+    }
+    expanded.forEach(function(m) {
+      var role = m.role;
+      var body;
+      if (role === "command") body = renderTool(m.text);
+      else if (role === "user") body = esc(m.text);
+      else body = renderMd(m.text);
+      html += '<div class="turn ' + role + '"><div class="bubble">' + body + "</div></div>";
+    });
+    if (pendingUser) {
+      if (pendingSeen(known, pendingUser)) {
+        pendingUser = null;
+        updateComposerMode();
+      } else {
+        html += '<div class="turn user"><div class="bubble">' + esc(pendingUser) + "</div></div>";
+      }
+    }
+    log.innerHTML = html;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function setStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = cls || "";
+  }
+
+  function setSessionsMeta(text, cls) {
+    sessionsMeta.textContent = text;
+    sessionsMeta.className = cls || "";
+  }
+
+  function renderPicker(sessions, currentSurface) {
+    lastSessions = sessions || [];
+    activeKey = currentSurface;
+    closeSwipeRow();
+    var visible = lastSessions.filter(function(s) {
+      return hiddenSessions.indexOf(sessionKey(s)) === -1;
+    });
+    if (!visible.length) {
+      var emptyMsg = lastSessions.length
+        ? "All sessions hidden. Swipe deleted rows are stored on this phone."
+        : "No cmux terminals or browsers open.";
+      sessList.innerHTML = '<div class="turn system" style="padding:24px 16px"><div class="bubble">' + emptyMsg + "</div></div>";
+      return;
+    }
+    function renderSession(s) {
+      var surface = s.surface || s.surface_id || "";
+      var workspace = s.workspace || s.workspace_id || "";
+      var kind = s.type || "terminal";
+      var isBrowser = kind === "browser";
+      var title = esc(s.title || surface || (isBrowser ? "browser" : "session"));
+      var path = isBrowser
+        ? esc(shortUrl(s.url || ""))
+        : esc(shortPath(s.cwd || s.current_directory || ""));
+      var key = esc(sessionKey(s));
+      var active = surface === currentSurface;
+      var snip = isBrowser
+        ? (active ? "Live stream" : "Browser · tap for live view")
+        : (active ? "Open in this chat" : "Terminal · tap to chat");
+      return '<div class="sess-row" data-key="' + key + '">' +
+        '<button type="button" class="sess-delete">Delete</button>' +
+        '<button type="button" class="sess' + (active ? " active" : "") + (isBrowser ? " browser" : "") + '"' +
+        ' data-surface="' + esc(surface) + '"' +
+        ' data-workspace="' + esc(workspace) + '"' +
+        ' data-window="' + esc(s.window || "") + '"' +
+        ' data-title="' + title + '"' +
+        ' data-type="' + esc(kind) + '"' +
+        ' data-url="' + esc(s.url || "") + '">' +
+        '<span class="dot"></span>' +
+        '<span class="body">' +
+          '<span class="top"><span class="name">' + title + '</span><span class="kind">' + (isBrowser ? "Browser" : "Terminal") + "</span></span>" +
+          '<span class="snip">' + snip + "</span>" +
+          (path ? '<span class="path">' + path + "</span>" : "") +
+        "</span></button></div>";
+    }
+    sessList.innerHTML = [
+      { type: "browser", title: "Browsers" },
+      { type: "terminal", title: "Terminals" }
+    ].map(function(group) {
+      var items = visible.filter(function(s) {
+        return (s.type || "terminal") === group.type;
+      });
+      if (!items.length) return "";
+      return '<section aria-labelledby="sess-' + group.type + '-heading">' +
+        '<h2 class="sess-section-title" id="sess-' + group.type + '-heading">' + group.title + '</h2>' +
+        items.map(renderSession).join("") + '</section>';
+    }).join("");
+    bindSwipeRows();
+  }
+
+  async function selectSession(surface, workspace, windowRef, title, typeHint, urlHint) {
+    try {
+      var r = await fetch(API + "/select?t=" + encodeURIComponent(TOKEN), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ surface: surface, workspace: workspace, window: windowRef || null })
+      });
+      var j = await r.json();
+      if (!j.ok) {
+        setSessionsMeta(j.error || "switch failed", "err");
+        return;
+      }
+      activeKey = j.surface || surface;
+      activeSurface = j.surface || surface || null;
+      activeWorkspace = j.workspace || workspace || null;
+      activeType = j.type || typeHint || "terminal";
+      activeUrl = j.url || urlHint || "";
+      titleText.textContent = title || j.title || "cmux";
+      liveDot.hidden = false;
+      known = [];
+      pendingUser = null;
+      lastSig = "";
+      holdStop = false;
+      sawBusy = false;
+      agentBusy = false;
+      log.innerHTML = "";
+      updateComposerMode();
+      if (activeType === "browser") {
+        showBrowserLive();
+      } else {
+        showThread();
+        await refreshStatus();
+        await refreshTranscript();
+      }
+    } catch (err) {
+      setSessionsMeta("switch failed", "err");
+    }
+  }
+
+  sessList.addEventListener("click", function(e) {
+    if (e.target.closest(".sess-delete")) return;
+    var btn = e.target.closest(".sess");
+    if (!btn) return;
+    if (btn.closest(".sess-row") && btn.closest(".sess-row").classList.contains("open")) {
+      closeSwipeRow();
+      return;
+    }
+    selectSession(
+      btn.getAttribute("data-surface"),
+      btn.getAttribute("data-workspace"),
+      btn.getAttribute("data-window"),
+      btn.getAttribute("data-title"),
+      btn.getAttribute("data-type"),
+      btn.getAttribute("data-url")
+    );
+  });
+
+  backBtn.addEventListener("click", function() {
+    showSessions();
+    refreshStatus();
+  });
+  if (bbackBtn) {
+    bbackBtn.addEventListener("click", function() {
+      showSessions();
+      refreshStatus();
+    });
+  }
+
+  function disconnect() {
+    if (leaving) return;
+    leaving = true;
+    clearInterval(poller);
+    stopBrowserStream();
+    fetch(API + "/shutdown?t=" + encodeURIComponent(TOKEN), {
+      method: "POST",
+      keepalive: true,
+    }).catch(function() {});
+    window.location.replace(LANDING || "https://callwalkietalkie.com");
+  }
+  leaveBtn.addEventListener("click", disconnect);
+  restoreBtn.addEventListener("click", function() {
+    hiddenSessions = [];
+    saveHidden();
+    renderPicker(lastSessions, activeKey);
+  });
+
+  async function refreshStatus() {
+    try {
+      var r = await fetch(API + "/status?t=" + encodeURIComponent(TOKEN));
+      var j = await r.json();
+      misses = 0;
+      if (!j.ok) {
+        setSessionsMeta(j.error || "cmux not ready", "err");
+        setStatus(j.error || "cmux not ready", "err");
+        liveDot.hidden = true;
+        return false;
+      }
+      setSessionsMeta("localhost · live", "ok");
+      titleText.textContent = j.title || "cmux";
+      liveDot.hidden = false;
+      activeType = j.type || activeType || "terminal";
+      activeUrl = j.url || activeUrl || "";
+      if (j.surface) activeSurface = j.surface;
+      if (j.workspace) activeWorkspace = j.workspace;
+      var bits = [];
+      if (j.type === "browser" && j.url) bits.push(shortUrl(j.url));
+      else if (j.cwd) bits.push(shortPath(j.cwd));
+      if (j.surface) bits.push(j.surface);
+      setStatus(bits.join(" · ") || "live", "ok");
+      if (inBrowser) {
+        if (btitleText) btitleText.textContent = j.title || "Browser";
+        if (bstatusEl) bstatusEl.textContent = j.url ? shortUrl(j.url) : "live view";
+      }
+      renderPicker(j.sessions || j.workspaces || [], j.surface);
+      return true;
+    } catch (e) {
+      if (++misses >= 2) {
+        setSessionsMeta("can't reach your Mac", "err");
+        setStatus("can't reach your Mac", "err");
+      }
+      return false;
+    }
+  }
+
+  async function refreshTranscript() {
+    if (!inThread || inBrowser) return;
+    try {
+      var r = await fetch(API + "/transcript?t=" + encodeURIComponent(TOKEN));
+      var j = await r.json();
+      if (!j.ok) {
+        if (j.error) setStatus(j.error, "err");
+        return;
+      }
+      agentBusy = !!j.busy;
+      if (agentBusy) sawBusy = true;
+      if (holdStop && !agentBusy && !pendingUser && (sawBusy || (sendAt && Date.now() - sendAt > 4000))) {
+        holdStop = false;
+        sawBusy = false;
+      }
+      updateComposerMode();
+      var msgs = j.messages || [];
+      var sig = msgs.map(function(m) { return (m.kind||"") + ":" + m.role + ":" + m.text; }).join("\x1e");
+      if (sig !== lastSig || pendingUser || agentBusy) {
+        lastSig = sig;
+        render(msgs);
+      }
+    } catch (e) {}
+  }
+
+  function isStopMode() {
+    // If the user is composing a follow-up, always Send — never steal the
+    // button for Stop mid-keystroke (that was eating / breaking messages).
+    if ((msg.value || "").trim()) return false;
+    return !!(agentBusy || pendingUser || interrupting || holdStop);
+  }
+
+  async function send() {
+    var text = (msg.value || "").trim();
+    // Allow queueing a follow-up while the agent is busy; only block on in-flight send/stop.
+    if (!text || sending || interrupting) return;
+    sending = true;
+    sendBtn.disabled = true;
+    pendingUser = text;
+    holdStop = true;
+    sawBusy = false;
+    sendAt = Date.now();
+    clearComposer();
+    updateComposerMode();
+    render(known);
+    try {
+      var r = await fetch(API + "/send?t=" + encodeURIComponent(TOKEN), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text })
+      });
+      var j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "send failed", "err");
+        pendingUser = null;
+        holdStop = false;
+        msg.value = text;
+        render(known);
+      } else {
+        await refreshTranscript();
+        render(known);
+      }
+    } catch (e) {
+      setStatus("send failed", "err");
+      pendingUser = null;
+      holdStop = false;
+      msg.value = text;
+      render(known);
+    }
+    sending = false;
+    updateComposerMode();
+    await refreshTranscript();
+  }
+
+  async function interrupt() {
+    if (interrupting) return;
+    interrupting = true;
+    updateComposerMode();
+    try {
+      var r = await fetch(API + "/interrupt?t=" + encodeURIComponent(TOKEN), {
+        method: "POST",
+        signal: AbortSignal.timeout(12000)
+      });
+      var j = await r.json();
+      if (!j.ok) setStatus(j.error || "stop failed", "err");
+      else {
+        holdStop = false;
+        pendingUser = null;
+        setStatus("stopping…");
+      }
+      await refreshTranscript();
+    } catch (e) {
+      setStatus("stop failed", "err");
+    }
+    interrupting = false;
+    updateComposerMode();
+  }
+
+  function updateComposerMode() {
+    var stop = isStopMode();
+    sendBtn.classList.toggle("stop", stop);
+    sendBtn.setAttribute("aria-label", stop ? "Stop" : "Send");
+    sendBtn.textContent = stop ? "■" : "↑";
+    sendBtn.disabled = sending || interrupting;
+  }
+
+  sendBtn.addEventListener("click", function(e) {
+    e.preventDefault();
+    if (isStopMode()) interrupt();
+    else send();
+  });
+  var shiftHeld = false;
+  function shouldSendKey(e) {
+    if (e.isComposing || e.keyCode === 229) return false;
+    if (e.shiftKey || (e.getModifierState && e.getModifierState("Shift"))) return false;
+    return e.key === "Enter" || e.code === "Enter" || e.keyCode === 13 || e.which === 13;
+  }
+  function isSendLineBreak(e) {
+    if (e.isComposing) return false;
+    if (e.shiftKey || shiftHeld || (e.getModifierState && e.getModifierState("Shift"))) return false;
+    if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") return true;
+    // Some mobile / soft keyboards insert a literal newline (or odd space) as insertText.
+    if (e.inputType === "insertText" && e.data != null && /[\r\n]/.test(e.data)) return true;
+    return false;
+  }
+  function stripSneakyBreaksAndSend() {
+    if (shiftHeld || msg.value.indexOf("\n") < 0) return;
+    msg.value = msg.value.replace(/\r?\n/g, "");
+    if ((msg.value || "").trim()) send();
+  }
+  msg.addEventListener("keydown", function(e) {
+    if (e.key === "Shift") shiftHeld = true;
+    if (!shouldSendKey(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    send();
+  });
+  msg.addEventListener("keyup", function(e) {
+    if (e.key === "Shift") shiftHeld = false;
+    // Soft-keyboard Send/return: keydown often never fires; a newline sneaks in instead.
+    if (!shouldSendKey(e)) return;
+    stripSneakyBreaksAndSend();
+  });
+  // iOS / enterkeyhint="send" often uses beforeinput instead of a normal Enter keydown.
+  msg.addEventListener("beforeinput", function(e) {
+    if (!isSendLineBreak(e)) return;
+    e.preventDefault();
+    send();
+  });
+  msg.addEventListener("input", function(e) {
+    msg.style.height = "auto";
+    msg.style.height = Math.min(msg.scrollHeight, 120) + "px";
+    updateComposerMode();
+    // Last-resort for keyboards that insert a break after beforeinput failed.
+    // Skip paste / undo so multiline paste isn't treated as Send.
+    var t = e && e.inputType;
+    if (t === "insertFromPaste" || t === "historyUndo" || t === "historyRedo" || t === "insertFromDrop") return;
+    if (t === "insertLineBreak" || t === "insertParagraph" ||
+        (t === "insertText" && msg.value.indexOf("\n") >= 0)) {
+      stripSneakyBreaksAndSend();
+    }
+  });
+  msg.addEventListener("blur", function() { shiftHeld = false; });
+  ctog.addEventListener("click", function() { setCmds(!showCmds); });
+
+  setCmds(true);
+  showSessions();
+  refreshStatus();
+  poller = setInterval(function() {
+    if (leaving) return;
+    refreshStatus();
+    refreshTranscript();
+  }, 900);
+})();
+</script>
+</body>
+</html>

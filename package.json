@@ -1,0 +1,42 @@
+{
+  "name": "callwalkietalkie",
+  "version": "0.9.0",
+  "description": "Run local laptop agents from your phone. Uses the free WalkieTalkie relay.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nbened/walkietalkie.git"
+  },
+  "homepage": "https://callwalkietalkie.com",
+  "type": "module",
+  "bin": {
+    "callwalkietalkie": "bin/callwalkietalkie.js",
+    "longleash": "bin/callwalkietalkie.js"
+  },
+  "files": [
+    "bin",
+    "runtime"
+  ],
+  "scripts": {
+    "start": "node bin/callwalkietalkie.js",
+    "check": "node --check bin/callwalkietalkie.js && node --check bin/longleash.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin"
+  ],
+  "keywords": [
+    "callwalkietalkie",
+    "longleash",
+    "cmux",
+    "qr",
+    "pairing",
+    "remote",
+    "cli"
+  ],
+  "bugs": {
+    "url": "https://github.com/nbened/walkietalkie/issues"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+*.tgz
+.env*
+.npmrc
+*.log
