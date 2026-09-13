@@ -643,7 +643,8 @@
   var misses = 0;
   var lastSig = "";
   var sending = false;
-  var pendingUser = null;
+  var pendingUsers = [];
+  var followLog = true;
   var agentBusy = false;
   var interrupting = false;
   var holdStop = false;
@@ -697,6 +698,20 @@
       if (m.role !== "user") return false;
       var got = normText(m.text);
       return got === needle || got.indexOf(needle) !== -1 || needle.indexOf(got) !== -1;
+    });
+  }
+
+  function hasPendingUsers() {
+    return pendingUsers.length > 0;
+  }
+
+  function isNearLogBottom() {
+    return log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  }
+
+  function acknowledgePending(messages) {
+    pendingUsers = pendingUsers.filter(function(text) {
+      return !pendingSeen(messages, text);
     });
   }
 
@@ -987,9 +1002,11 @@
 
   function render(messages) {
     known = messages || known;
+    acknowledgePending(known);
+    var shouldFollow = followLog && isNearLogBottom();
     var html = "";
     var expanded = expandMessages(known);
-    if (!expanded.length && !pendingUser) {
+    if (!expanded.length && !hasPendingUsers()) {
       html = '<div class="turn system"><div class="bubble">Say something to the agent.</div></div>';
     }
     expanded.forEach(function(m) {
@@ -1000,16 +1017,12 @@
       else body = renderMd(m.text);
       html += '<div class="turn ' + role + '"><div class="bubble">' + body + "</div></div>";
     });
-    if (pendingUser) {
-      if (pendingSeen(known, pendingUser)) {
-        pendingUser = null;
-        updateComposerMode();
-      } else {
-        html += '<div class="turn user"><div class="bubble">' + esc(pendingUser) + "</div></div>";
-      }
-    }
+    pendingUsers.forEach(function(text) {
+      html += '<div class="turn user"><div class="bubble">' + esc(text) + "</div></div>";
+    });
     log.innerHTML = html;
-    log.scrollTop = log.scrollHeight;
+    if (shouldFollow) log.scrollTop = log.scrollHeight;
+    updateComposerMode();
   }
 
   function setStatus(text, cls) {
@@ -1101,7 +1114,8 @@
       titleText.textContent = title || j.title || "cmux";
       liveDot.hidden = false;
       known = [];
-      pendingUser = null;
+      pendingUsers = [];
+      followLog = true;
       lastSig = "";
       holdStop = false;
       sawBusy = false;
@@ -1216,14 +1230,14 @@
       }
       agentBusy = !!j.busy;
       if (agentBusy) sawBusy = true;
-      if (holdStop && !agentBusy && !pendingUser && (sawBusy || (sendAt && Date.now() - sendAt > 4000))) {
+      if (holdStop && !agentBusy && !hasPendingUsers() && (sawBusy || (sendAt && Date.now() - sendAt > 4000))) {
         holdStop = false;
         sawBusy = false;
       }
       updateComposerMode();
       var msgs = j.messages || [];
       var sig = msgs.map(function(m) { return (m.kind||"") + ":" + m.role + ":" + m.text; }).join("\x1e");
-      if (sig !== lastSig || pendingUser || agentBusy) {
+      if (sig !== lastSig || hasPendingUsers()) {
         lastSig = sig;
         render(msgs);
       }
@@ -1234,7 +1248,7 @@
     // If the user is composing a follow-up, always Send — never steal the
     // button for Stop mid-keystroke (that was eating / breaking messages).
     if ((msg.value || "").trim()) return false;
-    return !!(agentBusy || pendingUser || interrupting || holdStop);
+    return !!(agentBusy || hasPendingUsers() || interrupting || holdStop);
   }
 
   async function send() {
@@ -1243,7 +1257,8 @@
     if (!text || sending || interrupting) return;
     sending = true;
     sendBtn.disabled = true;
-    pendingUser = text;
+    pendingUsers.push(text);
+    followLog = true;
     holdStop = true;
     sawBusy = false;
     sendAt = Date.now();
@@ -1259,7 +1274,7 @@
       var j = await r.json();
       if (!j.ok) {
         setStatus(j.error || "send failed", "err");
-        pendingUser = null;
+        pendingUsers = pendingUsers.filter(function(pending) { return pending !== text; });
         holdStop = false;
         msg.value = text;
         render(known);
@@ -1269,7 +1284,7 @@
       }
     } catch (e) {
       setStatus("send failed", "err");
-      pendingUser = null;
+      pendingUsers = pendingUsers.filter(function(pending) { return pending !== text; });
       holdStop = false;
       msg.value = text;
       render(known);
@@ -1292,7 +1307,7 @@
       if (!j.ok) setStatus(j.error || "stop failed", "err");
       else {
         holdStop = false;
-        pendingUser = null;
+        pendingUsers = [];
         setStatus("stopping…");
       }
       await refreshTranscript();
@@ -1368,6 +1383,9 @@
     }
   });
   msg.addEventListener("blur", function() { shiftHeld = false; });
+  log.addEventListener("scroll", function() {
+    followLog = isNearLogBottom();
+  }, { passive: true });
   ctog.addEventListener("click", function() { setCmds(!showCmds); });
 
   setCmds(true);
